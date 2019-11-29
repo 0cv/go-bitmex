@@ -1,4 +1,5 @@
 DEFAULT_GOAL := default
+export GO111MODULE = on
 
 default: lint test
 
