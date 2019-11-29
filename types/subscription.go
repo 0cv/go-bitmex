@@ -2,6 +2,7 @@ package types
 
 import "fmt"
 
+// SubscriptionTopic is a topic which can be subscribed to on the BitMEX API
 type SubscriptionTopic struct {
 	topic  string
 	filter *SubscriptionFilter
@@ -11,6 +12,7 @@ func newSubscriptionTopic(topic string) SubscriptionTopic {
 	return SubscriptionTopic{topic: topic}
 }
 
+// String implements Stringer
 func (s SubscriptionTopic) String() string {
 	if s.filter != nil {
 		if len(s.filter.Symbol) > 0 {
@@ -23,15 +25,18 @@ func (s SubscriptionTopic) String() string {
 	return s.topic
 }
 
+// Topic returns the raw topic name without any filter
 func (s SubscriptionTopic) Topic() string {
 	return s.topic
 }
 
+// WithInstrument filters a subscription by symbol e.g. XBTUSD
 func (s SubscriptionTopic) WithInstrument(instrument string) SubscriptionTopic {
 	s.filter = &SubscriptionFilter{Symbol: instrument}
 	return s
 }
 
+// WithAccount filters a subscription by account number
 func (s SubscriptionTopic) WithAccount(account int64) SubscriptionTopic {
 	s.filter = &SubscriptionFilter{Account: account}
 	return s
@@ -73,8 +78,10 @@ var (
 	SubscriptionTopicWallet              = newSubscriptionTopic("wallet")
 )
 
+// SubscriptionTopics is a collection of topics
 type SubscriptionTopics []SubscriptionTopic
 
+// Args converts the list to a CommandArgs
 func (s SubscriptionTopics) Args() CommandArgs {
 	out := make([]interface{}, len(s))
 	for i, j := range s {

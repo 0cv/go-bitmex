@@ -16,6 +16,7 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+// Websocket wraps httptest.Server to provide a fake websocket server for testing
 type Websocket struct {
 	Connected chan bool
 	Messages  chan []byte
@@ -23,6 +24,7 @@ type Websocket struct {
 	conn      *websocket.Conn
 }
 
+// NewWebsocket returns a new initialised fake websocket
 func NewWebsocket() *Websocket {
 	ws := &Websocket{
 		Connected: make(chan bool, 10),
@@ -32,12 +34,14 @@ func NewWebsocket() *Websocket {
 	return ws
 }
 
+// URL returns the url of the fake
 func (w *Websocket) URL() string {
 	u, _ := url.Parse(w.Server.URL)
 	u.Scheme = "ws"
 	return u.String()
 }
 
+// SendWebsocketMessage sends a message to the client
 func (w *Websocket) SendWebsocketMessage(t ginkgo.GinkgoTInterface, msg interface{}) {
 	ginkgo.GinkgoRecover()
 	if err := w.conn.WriteJSON(msg); err != nil {
@@ -45,6 +49,7 @@ func (w *Websocket) SendWebsocketMessage(t ginkgo.GinkgoTInterface, msg interfac
 	}
 }
 
+// Shutdown cleans up channels
 func (w *Websocket) Shutdown() {
 	close(w.Connected)
 	close(w.Messages)
