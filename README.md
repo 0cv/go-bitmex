@@ -7,6 +7,14 @@ Event driven BitMEX client library for Golang which provides a full access to bo
 Authentication is handled automatically for you by both clients. If there is credentials passed it will authenticate.
 Credentials are optional and if you are only using public endpoints, then there is no need to supply them.
 
+If you find this useful, be cool and use my affilate link [https://www.bitmex.com/register/0Oo09J](https://www.bitmex.com/register/0Oo09J) and get 10% off trading fees for 6 months.
+
+Or tip me:
+
+btc: 3HmLfHJvrJuM48zHFY6HstUCxbuwV3dvxd
+eth: 0x9Dc9129185E79211534D0039Af1C6f1ff585F5e3
+ltc: MEpFjCdR3uXd6QjuJTSu3coLtcSWY3S2Hg
+
 ## Further Documentation
 
 Read the tests [rest_test.go](https://github.com/adampointer/go-bitmex/blob/master/rest_test.go) and [websocket_test.go](https://github.com/adampointer/go-bitmex/blob/master/websocket_test.go)
