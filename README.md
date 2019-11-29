@@ -12,7 +12,9 @@ If you find this useful, be cool and use my affilate link [https://www.bitmex.co
 Or tip me:
 
 btc: 3HmLfHJvrJuM48zHFY6HstUCxbuwV3dvxd
+
 eth: 0x9Dc9129185E79211534D0039Af1C6f1ff585F5e3
+
 ltc: MEpFjCdR3uXd6QjuJTSu3coLtcSWY3S2Hg
 
 ## Further Documentation
