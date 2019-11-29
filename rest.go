@@ -13,6 +13,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// NewBitmexClient creates a new REST client
 func NewBitmexClient(config *ClientConfig) *client.BitMEX {
 	transportConfig := client.DefaultTransportConfig().
 		WithHost(config.HostUrl.Host).
@@ -24,6 +25,9 @@ func NewBitmexClient(config *ClientConfig) *client.BitMEX {
 	return client.New(transport, strfmt.Default)
 }
 
+// ClientConfig holds configuration data for the REST client
+// Rather than using this directly you should generally use the NewClientConfig
+// function and the builder functions
 type ClientConfig struct {
 	HostUrl             *url.URL
 	underlyingTransport http.RoundTripper
@@ -31,10 +35,12 @@ type ClientConfig struct {
 	Debug               bool
 }
 
+// NewClientConfig returns a *ClientConfig with the default transport set
 func NewClientConfig() *ClientConfig {
 	return &ClientConfig{underlyingTransport: http.DefaultTransport}
 }
 
+// WithURL sets the url to use e.g. https://testnet.bitmex.com
 func (c *ClientConfig) WithURL(u string) *ClientConfig {
 	hostUrl, err := url.Parse(u)
 	if err != nil {
@@ -44,9 +50,16 @@ func (c *ClientConfig) WithURL(u string) *ClientConfig {
 	return c
 }
 
+// WithAuth sets the credentials and is optional if you are exclusively using public endpoints
 func (c *ClientConfig) WithAuth(apiKey, apiSecret string) *ClientConfig {
 	c.ApiKey = apiKey
 	c.ApiSecret = apiSecret
+	return c
+}
+
+// WithTransport allows you to override the underlying transport used by the custom RoundTripper
+func (c *ClientConfig) WithTransport(t http.RoundTripper) *ClientConfig {
+	c.underlyingTransport = t
 	return c
 }
 
@@ -55,6 +68,7 @@ type transport struct {
 	underlyingTransport http.RoundTripper
 }
 
+// RoundTrip implements http.RoundTripper for transport
 func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if len(t.config.ApiKey) != 0 {
 		path := req.URL.Path
@@ -75,9 +89,9 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			path:    path,
 			secret:  t.config.ApiSecret,
 			body:    string(body),
-			expires: ExpiryTime(),
+			expires: expiryTime(),
 		}
-		sig, err := CalculateSignature(params)
+		sig, err := calculateSignature(params)
 		if err != nil {
 			return nil, err
 		}

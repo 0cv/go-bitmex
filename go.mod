@@ -10,6 +10,7 @@ require (
 	github.com/go-openapi/strfmt v0.19.3
 	github.com/go-openapi/swag v0.19.5
 	github.com/go-openapi/validate v0.19.5
+	github.com/golangci/golangci-lint v1.21.0 // indirect
 	github.com/gorilla/websocket v1.4.1
 	github.com/onsi/ginkgo v1.10.3
 	github.com/onsi/gomega v1.7.1

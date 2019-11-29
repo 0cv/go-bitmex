@@ -16,26 +16,36 @@ import (
 
 const heartbeatRate = 5 * time.Second
 
+// EventHandler is a function called in response to websocket events
 type EventHandler func(obj interface{})
 
+// APITopicHandler is a function called in response to a API subscription event being received
+type APITopicHandler func(response *types.SubscriptionResponse)
+
+// WebSocketClientConfig holds configuration data for the websocket client
 type WebsocketClientConfig struct {
 	ApiKey, ApiSecret, URL string
 }
 
+// NewWebsocketClientConfig returns a new config struct
 func NewWebsocketClientConfig() *WebsocketClientConfig {
 	return &WebsocketClientConfig{}
 }
+
+// WithURL sets the url to use e.g. wss://testnet.bitmex.com/realtime
 func (c *WebsocketClientConfig) WithURL(u string) *WebsocketClientConfig {
 	c.URL = u
 	return c
 }
 
+// WithAuth sets the credentials and is optional if you are exclusively using public endpoints
 func (c *WebsocketClientConfig) WithAuth(apiKey, apiSecret string) *WebsocketClientConfig {
 	c.ApiKey = apiKey
 	c.ApiSecret = apiSecret
 	return c
 }
 
+// WebsocketClient is a BitMEX websocket client
 type WebsocketClient struct {
 	socket        gowebsocket.Socket
 	bus           evbus.Bus
@@ -47,6 +57,7 @@ type WebsocketClient struct {
 	heartbeat     *timer.Timer
 }
 
+// NewWebsocketClient returns a new BitMEX websocket client
 func NewWebsocketClient(cfg *WebsocketClientConfig) *WebsocketClient {
 	return &WebsocketClient{
 		socket: gowebsocket.New(cfg.URL),
@@ -55,20 +66,24 @@ func NewWebsocketClient(cfg *WebsocketClientConfig) *WebsocketClient {
 	}
 }
 
+// SetConfig allows you to set the configuration after struct initialisation
 func (w *WebsocketClient) SetConfig(cfg *WebsocketClientConfig) {
 	w.config = cfg
 }
 
+// Start initialises the event bus and connects the websocket
 func (w *WebsocketClient) Start() {
 	w.setupWebsocketSubscribers()
 	w.setupWebsocketPublishers()
 	w.socket.Connect()
 }
 
+// Restart the websocket connection
 func (w *WebsocketClient) Restart() {
 	w.socket.Connect()
 }
 
+// Shutdown closes the websocket and unsubscribes listeners
 func (w *WebsocketClient) Shutdown() {
 	w.destroyWebsocketSubscribers()
 	defer func() {
@@ -79,6 +94,7 @@ func (w *WebsocketClient) Shutdown() {
 	w.socket.Close()
 }
 
+// SendCommand sends command json to the remote
 func (w *WebsocketClient) SendCommand(command *types.Command) error {
 	msg, err := json.Marshal(command)
 	if err != nil {
@@ -89,19 +105,24 @@ func (w *WebsocketClient) SendCommand(command *types.Command) error {
 	return nil
 }
 
+// SubscribeToEvents allows you to register a handler to listen to websocket events
 func (w *WebsocketClient) SubscribeToEvents(evt types.Event, handler EventHandler) error {
 	return w.bus.SubscribeAsync(evt.String(), handler, false)
 }
 
+// SubscribeToOneEvent allows you to register a handler to listen to a single websocket event
+// it will be unsubscribed after the first instance automatically
 func (w *WebsocketClient) SubscribeToOneEvent(evt types.Event, handler EventHandler) error {
 	return w.bus.SubscribeOnceAsync(evt.String(), handler)
 }
 
-func (w *WebsocketClient) UnsubscribeToEvents(evt types.Event, handler EventHandler) error {
+// UnsubscribeFromEvents unsubscribes a previously subscribed handler
+func (w *WebsocketClient) UnsubscribeFromEvents(evt types.Event, handler EventHandler) error {
 	return w.bus.Unsubscribe(evt.String(), handler)
 }
 
-func (w *WebsocketClient) SubscribeToApiTopic(topic types.SubscriptionTopic, handler func(response *types.SubscriptionResponse)) error {
+// SubscribeToApiTopic allows you to subscribe to a BitMEX API topic
+func (w *WebsocketClient) SubscribeToApiTopic(topic types.SubscriptionTopic, handler APITopicHandler) error {
 	if w.connected {
 		err := w.SendCommand(&types.Command{
 			Op:   types.CommandOpSubscribe,
@@ -114,6 +135,11 @@ func (w *WebsocketClient) SubscribeToApiTopic(topic types.SubscriptionTopic, han
 		w.topics = append(w.topics, topic)
 	}
 	return w.bus.SubscribeAsync(fmt.Sprintf("%s:%s", types.EventApiResponseSubscription, topic.Topic()), handler, false)
+}
+
+// UnsubscribeFromApiTopic allows you to subscribe a handler from a previousl subscribed BitMEX API topic
+func (w *WebsocketClient) UnsubscribeFromApiTopic(topic types.SubscriptionTopic, handler APITopicHandler) error {
+	return w.bus.Unsubscribe(fmt.Sprintf("%s:%s", types.EventApiResponseSubscription, topic.Topic()), handler)
 }
 
 func (w *WebsocketClient) setupWebsocketPublishers() {
@@ -172,7 +198,7 @@ func (w *WebsocketClient) websocketErrorHandler(err error) {
 func (w *WebsocketClient) websocketConnectHandler(_ struct{}) {
 	log.Info("connected")
 	if len(w.config.ApiKey) != 0 {
-		cmd, err := WebsocketAuthCommand(w.config.ApiKey, w.config.ApiSecret)
+		cmd, err := websocketAuthCommand(w.config.ApiKey, w.config.ApiSecret)
 		if err != nil {
 			log.Fatal(err)
 		}
