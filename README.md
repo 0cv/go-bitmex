@@ -28,7 +28,7 @@ import (
 
     "github.com/adampointer/go-bitmex"
     "github.com/adampointer/go-bitmex/swagger/client/trade"
-	"github.com/wacul/ptr"
+    "github.com/wacul/ptr"
 )
 
 func main() {
@@ -75,8 +75,8 @@ err := wsClient.SubscribeToEvents(types.EventWebsocketConnected, func(interface{
 wsClient.SubscribeToApiTopic(types.SubscriptionTopicOrder, func(res *types.SubscriptionResponse) {
     // Decode the response into an OrderData model
     data, err := res.OrderData()
-	if err != nil {
-		log.Errorf("error getting order data: %s", err)
+    if err != nil {
+        log.Errorf("error getting order data: %s", err)
 	}
     fmt.Println(data)
 })
@@ -124,7 +124,7 @@ func main() {
 
 ### Heartbeat and Reconnection
 
-Due to an issue in the underlying websocket librar, the disconnect handler may not get called if the connection is silently
+Due to an issue in the underlying websocket library, the disconnect handler may not get called if the connection is silently
 dropped by the remote. Heartbeat is implemented and pings the remote every 5 seconds. A 10 second timer is reset on every message 
 received. If the timer expires, the library will automatically call `Restart()`. On a successful reconnect, any configured
 API subscription will be re-subscribed.
