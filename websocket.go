@@ -100,7 +100,7 @@ func (w *WebsocketClient) SendCommand(command *types.Command) error {
 	if err != nil {
 		return fmt.Errorf("error marshalling command to json: %s", err)
 	}
-	log.Trace(string(msg))
+	log.Tracef("===x %s", string(msg))
 	w.socket.SendText(string(msg))
 	return nil
 }
@@ -121,7 +121,7 @@ func (w *WebsocketClient) UnsubscribeFromEvents(evt types.Event, handler EventHa
 	return w.bus.Unsubscribe(evt.String(), handler)
 }
 
-// SubscribeToApiTopic allows you to subscribe to a BitMEX API topic
+// SubscribeToApiTopic allows you to subscribe to a BitMEX API topic without message ordering guarantees
 func (w *WebsocketClient) SubscribeToApiTopic(topic types.SubscriptionTopic, handler APITopicHandler) error {
 	if w.connected {
 		err := w.SendCommand(&types.Command{
@@ -134,7 +134,7 @@ func (w *WebsocketClient) SubscribeToApiTopic(topic types.SubscriptionTopic, han
 	} else {
 		w.topics = append(w.topics, topic)
 	}
-	return w.bus.SubscribeAsync(fmt.Sprintf("%s:%s", types.EventApiResponseSubscription, topic.Topic()), handler, false)
+	return w.bus.SubscribeAsync(fmt.Sprintf("%s:%s", types.EventApiResponseSubscription, topic.Topic()), handler, true)
 }
 
 // UnsubscribeFromApiTopic allows you to subscribe a handler from a previousl subscribed BitMEX API topic
@@ -239,7 +239,7 @@ func (w *WebsocketClient) disconnectAndRetry() {
 }
 
 func (w *WebsocketClient) websocketMessageHandler(msg string) {
-	log.Trace(msg)
+	log.Tracef("x=== %s", msg)
 	if msg == "pong" {
 		return
 	}
@@ -284,7 +284,9 @@ func (w *WebsocketClient) apiTopicHandler(obj interface{}) {
 
 func (w *WebsocketClient) startHeartbeat() {
 	log.Info("starting heartbeat")
+	w.heartbeatLock.Lock()
 	w.heartbeat = timer.NewTimer(2 * heartbeatRate)
+	w.heartbeatLock.Unlock()
 	ticker := time.NewTicker(heartbeatRate)
 	go func() {
 		<-w.heartbeat.C
