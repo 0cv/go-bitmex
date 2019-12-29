@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/asaskevich/EventBus v0.0.0-20180315140547-d46933a94f05
+	github.com/avast/retry-go v2.4.3+incompatible
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f
 	github.com/go-openapi/errors v0.19.2
 	github.com/go-openapi/runtime v0.19.8

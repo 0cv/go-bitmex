@@ -2,16 +2,21 @@ package bitmex
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/adampointer/go-bitmex/swagger/client"
+	"github.com/avast/retry-go"
 	rc "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
 	log "github.com/sirupsen/logrus"
 )
+
+var defaultRetryOpts = []retry.Option{retry.Delay(500 * time.Millisecond), retry.Attempts(10)}
 
 // NewBitmexClient creates a new REST client
 func NewBitmexClient(config *ClientConfig) *client.BitMEX {
@@ -33,11 +38,16 @@ type ClientConfig struct {
 	underlyingTransport http.RoundTripper
 	ApiKey, ApiSecret   string
 	Debug               bool
+	RetryOpts           []retry.Option
 }
 
-// NewClientConfig returns a *ClientConfig with the default transport set
+// NewClientConfig returns a *ClientConfig with the default transport set and the default retry options
+// Default retry is exponential backoff, 10 attempts with an initial delay of 500 milliseconds
 func NewClientConfig() *ClientConfig {
-	return &ClientConfig{underlyingTransport: http.DefaultTransport}
+	return &ClientConfig{
+		underlyingTransport: http.DefaultTransport,
+		RetryOpts:           defaultRetryOpts,
+	}
 }
 
 // WithURL sets the url to use e.g. https://testnet.bitmex.com
@@ -60,6 +70,18 @@ func (c *ClientConfig) WithAuth(apiKey, apiSecret string) *ClientConfig {
 // WithTransport allows you to override the underlying transport used by the custom RoundTripper
 func (c *ClientConfig) WithTransport(t http.RoundTripper) *ClientConfig {
 	c.underlyingTransport = t
+	return c
+}
+
+// WithRetryOptions sets the request retry options, replacing the defaults
+func (c *ClientConfig) WithRetryOptions(opts ...retry.Option) *ClientConfig {
+	c.RetryOpts = opts
+	return c
+}
+
+// WithRetryOption appends a retry option to the defaults
+func (c *ClientConfig) WithRetryOption(opt retry.Option) *ClientConfig {
+	c.RetryOpts = append(c.RetryOpts, opt)
 	return c
 }
 
@@ -99,14 +121,24 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		req.Header.Add("api-key", t.config.ApiKey)
 		req.Header.Add("api-signature", sig)
 	}
-	res, err := t.underlyingTransport.RoundTrip(req)
-	if err != nil {
-		return nil, err
-	}
-	if res.StatusCode == 429 {
-		log.Fatal("rate limiting - shutting down")
-	}
-	return res, nil
+	var res *http.Response
+	err := retry.Do(func() error {
+		var err error
+		res, err = t.underlyingTransport.RoundTrip(req)
+		if err != nil {
+			return err
+		}
+		if res.StatusCode == 429 {
+			log.Fatal("rate limiting - shutting down")
+			return retry.Unrecoverable(errors.New("rate limiting"))
+		}
+		if res.StatusCode == 503 {
+			return errors.New("http status 503")
+		}
+		return nil
+	}, t.config.RetryOpts...)
+
+	return res, err
 }
 
 func newHttpClient(config *ClientConfig) *http.Client {
