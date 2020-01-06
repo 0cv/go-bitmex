@@ -137,7 +137,7 @@ func (w *WebsocketClient) SubscribeToApiTopic(topic types.SubscriptionTopic, han
 	return w.bus.SubscribeAsync(fmt.Sprintf("%s:%s", types.EventApiResponseSubscription, topic.Topic()), handler, true)
 }
 
-// UnsubscribeFromApiTopic allows you to subscribe a handler from a previousl subscribed BitMEX API topic
+// UnsubscribeFromApiTopic allows you to subscribe a handler from a previously subscribed BitMEX API topic
 func (w *WebsocketClient) UnsubscribeFromApiTopic(topic types.SubscriptionTopic, handler APITopicHandler) error {
 	return w.bus.Unsubscribe(fmt.Sprintf("%s:%s", types.EventApiResponseSubscription, topic.Topic()), handler)
 }
