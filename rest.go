@@ -2,8 +2,11 @@ package bitmex
 
 import (
 	"bytes"
+	"encoding"
 	"errors"
 	"fmt"
+	"github.com/go-openapi/runtime"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -18,6 +21,15 @@ import (
 
 var defaultRetryOpts = []retry.Option{retry.Delay(500 * time.Millisecond), retry.Attempts(10)}
 
+func customTextConsumer(defaultTextConsumer runtime.Consumer) runtime.Consumer {
+	return runtime.ConsumerFunc(func(reader io.Reader, data interface{}) error {
+		if d, ok := data.(encoding.TextUnmarshaler); ok {
+			return defaultTextConsumer.Consume(reader, d)
+		}
+		return nil
+	})
+}
+
 // NewBitmexClient creates a new REST client
 func NewBitmexClient(config *ClientConfig) *client.BitMEX {
 	transportConfig := client.DefaultTransportConfig().
@@ -26,6 +38,8 @@ func NewBitmexClient(config *ClientConfig) *client.BitMEX {
 		WithSchemes([]string{config.HostUrl.Scheme})
 	httpclient := newHttpClient(config)
 	transport := rc.NewWithClient(transportConfig.Host, transportConfig.BasePath, transportConfig.Schemes, httpclient)
+	transport.Consumers[runtime.HTMLMime] = customTextConsumer(transport.Consumers[runtime.HTMLMime])
+	transport.Consumers[runtime.TextMime] = customTextConsumer(transport.Consumers[runtime.TextMime])
 	transport.Debug = config.Debug
 	return client.New(transport, strfmt.Default)
 }
