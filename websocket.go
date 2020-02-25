@@ -3,12 +3,15 @@ package bitmex
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/adampointer/go-bitmex/types"
 	evbus "github.com/asaskevich/EventBus"
 	"github.com/desertbit/timer"
+	"github.com/pkg/errors"
 	"github.com/sacOO7/gowebsocket"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/multierr"
@@ -55,20 +58,36 @@ type WebsocketClient struct {
 	config        *WebsocketClientConfig
 	heartbeatLock sync.Mutex
 	heartbeat     *timer.Timer
+	log           *log.Logger
+	logWriter     io.Writer
 }
 
-// NewWebsocketClient returns a new BitMEX websocket client
+// NewWebsocketClient returns a new BitMEX websocket client with the logrus standard logger
 func NewWebsocketClient(cfg *WebsocketClientConfig) *WebsocketClient {
 	return &WebsocketClient{
 		socket: gowebsocket.New(cfg.URL),
 		bus:    evbus.New(),
 		config: cfg,
+		log:    log.StandardLogger(),
 	}
 }
 
 // SetConfig allows you to set the configuration after struct initialisation
-func (w *WebsocketClient) SetConfig(cfg *WebsocketClientConfig) {
+func (w *WebsocketClient) SetConfig(cfg *WebsocketClientConfig) *WebsocketClient {
 	w.config = cfg
+	return w
+}
+
+// WithLogger overrides the logrus standard logger with a Logger instance
+func (w *WebsocketClient) WithLogger(l *log.Logger) *WebsocketClient {
+	w.log = l
+	return w
+}
+
+// WithLogWriter sets the output stream for the logger
+func (w *WebsocketClient) WithLogWriter(o io.Writer) *WebsocketClient {
+	w.log.SetOutput(o)
+	return w
 }
 
 // Start initialises the event bus and connects the websocket
@@ -88,7 +107,7 @@ func (w *WebsocketClient) Shutdown() {
 	w.destroyWebsocketSubscribers()
 	defer func() {
 		if err := recover(); err != nil {
-			log.Warn(err)
+			w.log.Warn(err)
 		}
 	}()
 	w.socket.Close()
@@ -98,9 +117,9 @@ func (w *WebsocketClient) Shutdown() {
 func (w *WebsocketClient) SendCommand(command *types.Command) error {
 	msg, err := json.Marshal(command)
 	if err != nil {
-		return fmt.Errorf("error marshalling command to json: %s", err)
+		return errors.Wrap(err, "error marshalling command to json")
 	}
-	log.Tracef("===x %s", string(msg))
+	w.log.Tracef("===x %s", string(msg))
 	w.socket.SendText(string(msg))
 	return nil
 }
@@ -172,7 +191,7 @@ func (w *WebsocketClient) setupWebsocketSubscribers() {
 		w.bus.SubscribeAsync(types.EventApiResponseSuccess.String(), w.apiTopicHandler, false),
 	)
 	if err != nil {
-		log.Fatalf("unable to setup subscribers: %s", err)
+		w.log.WithError(err).Fatal("unable to setup subscribers")
 	}
 }
 
@@ -186,26 +205,29 @@ func (w *WebsocketClient) destroyWebsocketSubscribers() {
 		w.bus.Unsubscribe(types.EventApiResponseSuccess.String(), w.apiTopicHandler),
 	)
 	if err != nil {
-		log.Fatalf("unable to setup subscribers: %s", err)
+		w.log.WithError(err).Fatal("unable to setup subscribers")
+		os.Exit(1)
 	}
 }
 
 func (w *WebsocketClient) websocketErrorHandler(err error) {
-	log.Errorf("websocket error: %s", err)
+	w.log.WithError(err).Error("websocket error")
 	w.disconnectAndRetry()
 }
 
 func (w *WebsocketClient) websocketConnectHandler(_ struct{}) {
-	log.Info("connected")
+	w.log.Info("connected")
 	if len(w.config.ApiKey) != 0 {
 		cmd, err := websocketAuthCommand(w.config.ApiKey, w.config.ApiSecret)
 		if err != nil {
-			log.Fatal(err)
+			w.log.WithError(err).Fatal("unable to generate auth command")
+			os.Exit(1)
 		}
-		log.Info("sent auth command")
+		w.log.Info("sent auth command")
 		err = w.SendCommand(cmd)
 		if err != nil {
-			log.Fatal(err)
+			w.log.WithError(err).Fatal("unable to send auth")
+			os.Exit(1)
 		}
 	}
 	if len(w.topics) > 0 {
@@ -214,7 +236,8 @@ func (w *WebsocketClient) websocketConnectHandler(_ struct{}) {
 			Args: w.topics.Args(),
 		})
 		if err != nil {
-			log.Fatal(err)
+			w.log.WithError(err).Fatal("unable to send subscription request")
+			os.Exit(1)
 		}
 	}
 	w.conMutex.Lock()
@@ -228,24 +251,24 @@ func (w *WebsocketClient) websocketDisconnectHandler(_ struct{}) {
 }
 
 func (w *WebsocketClient) disconnectAndRetry() {
-	log.Warn("disconnected")
+	w.log.Warn("disconnected")
 	w.heartbeat.Stop()
 	w.conMutex.Lock()
 	w.connected = false
 	w.conMutex.Unlock()
-	log.Info("retrying websocket connection in 30s")
+	w.log.Info("retrying websocket connection in 30s")
 	time.Sleep(30 * time.Second)
 	w.Restart()
 }
 
 func (w *WebsocketClient) websocketMessageHandler(msg string) {
-	log.Tracef("x=== %s", msg)
+	w.log.Tracef("x=== %s", msg)
 	if msg == "pong" {
 		return
 	}
 	raw := &types.CompositeResponse{}
 	if err := json.Unmarshal([]byte(msg), raw); err != nil {
-		log.Errorf("error decoding message: %s", err)
+		w.log.WithError(err).Error("error decoding message")
 		return
 	}
 	switch {
@@ -260,7 +283,7 @@ func (w *WebsocketClient) websocketMessageHandler(msg string) {
 	case raw.IsSuccessResponse():
 		w.bus.Publish(types.EventApiResponseSuccess.String(), raw.ToSuccessResponse().WithRequest(raw.Request))
 	default:
-		log.Errorf("unknown message: %s", msg)
+		w.log.Errorf("unknown message: %s", msg)
 	}
 }
 
@@ -271,19 +294,19 @@ func (w *WebsocketClient) apiTopicHandler(obj interface{}) {
 			"args": o.Request.Args,
 		}
 		if *o.Success {
-			log.WithFields(fields).Infof("%s operation successful", o.Request.Op)
+			w.log.WithFields(fields).Infof("%s operation successful", o.Request.Op)
 		} else {
-			log.WithFields(fields).Infof("%s operation failed'", o.Request.Op)
+			w.log.WithFields(fields).Infof("%s operation failed'", o.Request.Op)
 		}
 	case *types.SubscriptionResponse:
 		w.bus.Publish(fmt.Sprintf("%s:%s", types.EventApiResponseSubscription, o.Table), o)
 	default:
-		log.Errorf("error casting apiTopic object")
+		w.log.Error("error casting apiTopic object")
 	}
 }
 
 func (w *WebsocketClient) startHeartbeat() {
-	log.Info("starting heartbeat")
+	w.log.Info("starting heartbeat")
 	w.heartbeatLock.Lock()
 	w.heartbeat = timer.NewTimer(2 * heartbeatRate)
 	w.heartbeatLock.Unlock()
@@ -291,7 +314,7 @@ func (w *WebsocketClient) startHeartbeat() {
 	go func() {
 		<-w.heartbeat.C
 		ticker.Stop()
-		log.Warn("no response to heartbeat, restarting websocket")
+		w.log.Warn("no response to heartbeat, restarting websocket")
 		w.Restart()
 	}()
 	go func() {
