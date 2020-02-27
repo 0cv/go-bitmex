@@ -32,10 +32,7 @@ func (o orderBookLevels) Swap(i, j int) {
 	o[i], o[j] = o[j], o[i]
 }
 
-const (
-	topQuoteTopic  = "quote"
-	top5QuoteTopic = "top5quotes"
-)
+const topQuoteTopic = "quote"
 
 type QuoteHandler func(d *QuoteData)
 
@@ -47,6 +44,7 @@ type Book struct {
 	topAsk, topBid, tickSize float64
 	log                      *log.Logger
 	topAsks, topBids         []*models.OrderBookL2
+	rawQuoteHandler          QuoteHandler
 }
 
 func NewBook(bus evbus.Bus, ts float64, l *log.Logger) *Book {
@@ -113,20 +111,20 @@ func (b *Book) UpdateHandler(r *types.SubscriptionResponse) error {
 	}
 
 	// Notify
-	if b.bus != nil {
-		q := &QuoteData{
-			TopAsk:   b.topAsk,
-			TopBid:   b.topBid,
-			MidPrice: (b.topAsk + b.topBid) / 2,
-			TopAsks:  b.topAsks,
-			TopBids:  b.topBids,
-			Spread:   b.topAsk - b.topBid,
-		}
-		if b.topAsk != oldTopAsk || b.topBid != oldTopBid {
-			b.bus.Publish(topQuoteTopic, q)
-		}
-		b.bus.Publish(top5QuoteTopic, q)
+	q := &QuoteData{
+		TopAsk:   b.topAsk,
+		TopBid:   b.topBid,
+		MidPrice: (b.topAsk + b.topBid) / 2,
+		TopAsks:  b.topAsks,
+		TopBids:  b.topBids,
+		Spread:   b.topAsk - b.topBid,
 	}
+	b.rawQuoteHandler(q)
+
+	if b.topAsk != oldTopAsk || b.topBid != oldTopBid && b.bus != nil {
+		b.bus.Publish(topQuoteTopic, q)
+	}
+
 	return nil
 }
 
@@ -158,17 +156,13 @@ func (b *Book) UnsubscribeFromTopQuotes(f QuoteHandler) error {
 
 // SubscribeToTop5Quotes subscribes to a topic which is updated when there is a change
 // in price or size of the top 5 bids or asks
-func (b *Book) SubscribeToTop5Quotes(once bool, f QuoteHandler) error {
-	b.log.Debug("subscribe top 5 quotes")
-	if once {
-		return b.bus.SubscribeOnce(top5QuoteTopic, f)
-	}
-	return b.bus.Subscribe(top5QuoteTopic, f)
+func (b *Book) SubscribeToTop5Quotes(_ bool, f QuoteHandler) error {
+	b.rawQuoteHandler = f
+	return nil
 }
 
-func (b *Book) UnsubscribeFromTop5Quotes(f QuoteHandler) error {
-	b.log.Debug("unsubscribe top 5 quotes")
-	return b.bus.Unsubscribe(top5QuoteTopic, f)
+func (b *Book) UnsubscribeFromTop5Quotes(_ QuoteHandler) error {
+	return nil
 }
 
 func (b *Book) init(table []*models.OrderBookL2) error {

@@ -3,13 +3,13 @@ package bitmex
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/adampointer/go-bitmex/book"
 	"io"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/adampointer/go-bitmex/book"
 	"github.com/adampointer/go-bitmex/types"
 	evbus "github.com/asaskevich/EventBus"
 	"github.com/desertbit/timer"
