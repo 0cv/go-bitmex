@@ -40,7 +40,7 @@ func NewBitmexClient(config *ClientConfig) *client.BitMEX {
 	transport := rc.NewWithClient(transportConfig.Host, transportConfig.BasePath, transportConfig.Schemes, httpclient)
 	transport.Consumers[runtime.HTMLMime] = customTextConsumer(transport.Consumers[runtime.HTMLMime])
 	transport.Consumers[runtime.TextMime] = customTextConsumer(transport.Consumers[runtime.TextMime])
-	transport.Debug = config.Debug
+	transport.Debug = config.VerboseRequestLogging
 	return client.New(transport, strfmt.Default)
 }
 
@@ -48,11 +48,11 @@ func NewBitmexClient(config *ClientConfig) *client.BitMEX {
 // Rather than using this directly you should generally use the NewClientConfig
 // function and the builder functions
 type ClientConfig struct {
-	HostUrl             *url.URL
-	underlyingTransport http.RoundTripper
-	ApiKey, ApiSecret   string
-	Debug               bool
-	RetryOpts           []retry.Option
+	HostUrl               *url.URL
+	underlyingTransport   http.RoundTripper
+	ApiKey, ApiSecret     string
+	VerboseRequestLogging bool
+	RetryOpts             []retry.Option
 }
 
 // NewClientConfig returns a *ClientConfig with the default transport set and the default retry options
@@ -151,6 +151,12 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		return nil
 	}, t.config.RetryOpts...)
+
+	log.WithFields(log.Fields{
+		"limit":     res.Header.Get("x-ratelimit-limit"),
+		"remaining": res.Header.Get("x-ratelimit-remaining"),
+		"reset":     res.Header.Get("x-ratelimit-reset"),
+	}).Debugf("rate limits")
 
 	return res, err
 }

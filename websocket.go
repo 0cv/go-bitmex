@@ -3,8 +3,10 @@ package bitmex
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/adampointer/go-bitmex/book"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -60,6 +62,7 @@ type WebsocketClient struct {
 	heartbeat     *timer.Timer
 	log           *log.Logger
 	logWriter     io.Writer
+	book          *book.Book
 }
 
 // NewWebsocketClient returns a new BitMEX websocket client with the logrus standard logger
@@ -142,16 +145,8 @@ func (w *WebsocketClient) UnsubscribeFromEvents(evt types.Event, handler EventHa
 
 // SubscribeToApiTopic allows you to subscribe to a BitMEX API topic without message ordering guarantees
 func (w *WebsocketClient) SubscribeToApiTopic(topic types.SubscriptionTopic, handler APITopicHandler) error {
-	if w.connected {
-		err := w.SendCommand(&types.Command{
-			Op:   types.CommandOpSubscribe,
-			Args: types.CommandArgs{topic.String()},
-		})
-		if err != nil {
-			return err
-		}
-	} else {
-		w.topics = append(w.topics, topic)
+	if err := w.sendSubscriptionCommand(topic); err != nil {
+		return err
 	}
 	return w.bus.SubscribeAsync(fmt.Sprintf("%s:%s", types.EventApiResponseSubscription, topic.Topic()), handler, true)
 }
@@ -159,6 +154,16 @@ func (w *WebsocketClient) SubscribeToApiTopic(topic types.SubscriptionTopic, han
 // UnsubscribeFromApiTopic allows you to subscribe a handler from a previously subscribed BitMEX API topic
 func (w *WebsocketClient) UnsubscribeFromApiTopic(topic types.SubscriptionTopic, handler APITopicHandler) error {
 	return w.bus.Unsubscribe(fmt.Sprintf("%s:%s", types.EventApiResponseSubscription, topic.Topic()), handler)
+}
+
+// L2OrderBook returns a l2 orderbook instance for the specified instrument
+// tickSize must be specified and is the minimum price increment for the contract
+func (w *WebsocketClient) L2OrderBook(instrument string, tickSize float64) (*book.Book, error) {
+	if err := w.sendSubscriptionCommand(types.SubscriptionTopicOrderBookL2.WithInstrument(instrument)); err != nil {
+		return nil, err
+	}
+	w.book = book.NewBook(w.bus, tickSize, w.log)
+	return w.book, nil
 }
 
 func (w *WebsocketClient) setupWebsocketPublishers() {
@@ -177,7 +182,19 @@ func (w *WebsocketClient) setupWebsocketPublishers() {
 			w.heartbeat.Reset(2 * heartbeatRate)
 		}
 		w.heartbeatLock.Unlock()
+
 		w.bus.Publish(types.EventWebsocketMessage.String(), message)
+
+		if w.book != nil && strings.Contains(message, `"table":"orderBookL2"`) {
+			r := &types.SubscriptionResponse{}
+			if err := json.Unmarshal([]byte(message), r); err != nil {
+				w.log.WithError(err).Error("error decoding message")
+				return
+			}
+			if err := w.book.UpdateHandler(r); err != nil {
+				w.log.WithError(err).Error("error in book update handler")
+			}
+		}
 	}
 }
 
@@ -323,4 +340,19 @@ func (w *WebsocketClient) startHeartbeat() {
 			w.socket.SendText("ping")
 		}
 	}()
+}
+
+func (w *WebsocketClient) sendSubscriptionCommand(topic types.SubscriptionTopic) error {
+	if w.connected {
+		err := w.SendCommand(&types.Command{
+			Op:   types.CommandOpSubscribe,
+			Args: types.CommandArgs{topic.String()},
+		})
+		if err != nil {
+			return errors.Wrap(err, "error sending subscription command")
+		}
+	} else {
+		w.topics = append(w.topics, topic)
+	}
+	return nil
 }
