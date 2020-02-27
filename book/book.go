@@ -88,8 +88,9 @@ func (b *Book) UpdateHandler(r *types.SubscriptionResponse) error {
 	if err != nil {
 		return err
 	}
+	var notify bool
 	if b.dirty {
-		b.sortPrices()
+		notify = b.sortPrices()
 	}
 
 	// Sanity checking
@@ -119,7 +120,9 @@ func (b *Book) UpdateHandler(r *types.SubscriptionResponse) error {
 		TopBids:  b.topBids,
 		Spread:   b.topAsk - b.topBid,
 	}
-	b.rawQuoteHandler(q)
+	if notify {
+		b.rawQuoteHandler(q)
+	}
 
 	if b.topAsk != oldTopAsk || b.topBid != oldTopBid && b.bus != nil {
 		b.bus.Publish(topQuoteTopic, q)
@@ -262,7 +265,7 @@ func (b *Book) updateRows(table []*models.OrderBookL2) error {
 	return nil
 }
 
-func (b *Book) sortPrices() {
+func (b *Book) sortPrices() (dirty bool) {
 	if len(b.Asks) == 0 || len(b.Bids) == 0 {
 		return
 	}
@@ -284,6 +287,55 @@ func (b *Book) sortPrices() {
 
 	b.topBid = topBids[0].Price
 	b.topAsk = topAsks[0].Price
-	b.topBids = topBids
-	b.topAsks = topAsks
+
+	if !isLevelEqual(b.topBids, topBids) || !isLevelEqual(b.topAsks, topAsks) {
+		dirty = true
+	}
+
+	b.topBids = makeDeepCopy(topBids)
+	b.topAsks = makeDeepCopy(topAsks)
+	return
+}
+
+func isLevelEqual(a, b []*models.OrderBookL2) bool {
+	if (a == nil) != (b == nil) {
+		return false
+	}
+
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i].Size != b[i].Size {
+			return false
+		}
+		if a[i].Price != b[i].Price {
+			return false
+		}
+		if *a[i].ID != *b[i].ID {
+			return false
+		}
+		if *a[i].Side != *b[i].Side {
+			return false
+		}
+	}
+	return true
+}
+
+func makeDeepCopy(a []*models.OrderBookL2) []*models.OrderBookL2 {
+	b := make([]*models.OrderBookL2, len(a))
+	for i, j := range a {
+		id := *j.ID
+		side := *j.Side
+		symbol := *j.Symbol
+		b[i] = &models.OrderBookL2{
+			ID:     &id,
+			Price:  j.Price,
+			Side:   &side,
+			Size:   j.Size,
+			Symbol: &symbol,
+		}
+	}
+	return b
 }
