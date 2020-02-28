@@ -120,7 +120,7 @@ func (b *Book) UpdateHandler(r *types.SubscriptionResponse) error {
 		TopBids:  b.topBids,
 		Spread:   b.topAsk - b.topBid,
 	}
-	if notify {
+	if notify && b.rawQuoteHandler != nil {
 		b.rawQuoteHandler(q)
 	}
 
